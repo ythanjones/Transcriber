@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Website Audio Transcriber</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen p-4">
+    <div class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-2xl">
+        <h1 class="text-3xl font-bold text-center mb-6">Real-time Website Audio Transcriber</h1>
+
+        <section class="mb-6">
+            <h2 class="text-xl font-semibold mb-3">How to Use:</h2>
+            <ol class="list-decimal list-inside space-y-2 text-gray-300">
+                <li>Open the website you want to transcribe in a new browser tab and start playing its audio.</li>
+                <li>Return to this page and click the 'Start Transcription' button below.</li>
+                <li>From the browser pop-up, select the 'Tab' option and choose the specific tab that is playing the audio, then click 'Share'.</li>
+            </ol>
+        </section>
+
+        <div class="flex justify-center space-x-4 mb-6">
+            <button id="startButton" class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 px-6 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600">
+                Start Transcription
+            </button>
+            <button id="stopButton" class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold py-2 px-4 rounded opacity-50 cursor-not-allowed" disabled>
+                Stop Transcription
+            </button>
+        </div>
+
+        <textarea id="transcriptionArea" class="w-full h-40 p-4 bg-gray-700 text-gray-200 rounded-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none mb-4" placeholder="Transcription will appear here..." readonly></textarea>
+
+        <div class="text-center text-sm text-gray-400">
+            Status: <span id="statusText" class="font-semibold">Not recording</span>
+        </div>
+    </div>
+
+<script>
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    const statusText = document.getElementById('statusText');
+    const transcriptionArea = document.getElementById('transcriptionArea');
+
+    let mediaRecorder;
+    let mediaStream;
+    let recordingInterval;
+    let startTime;
+
+    function updateStatus(status) {
+        statusText.textContent = status;
+    }
+
+    function formatTime(seconds) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    startButton.addEventListener('click', async () => {
+        try {
+            mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+
+            startButton.disabled = true;
+            startButton.classList.add('opacity-50', 'cursor-not-allowed');
+            startButton.classList.remove('hover:bg-blue-700', 'active:bg-blue-800');
+
+            stopButton.disabled = false;
+            stopButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            stopButton.classList.add('hover:bg-red-700', 'active:bg-red-800');
+
+            updateStatus('Listening...');
+            transcriptionArea.value = ''; // Clear previous transcription
+
+            mediaRecorder = new MediaRecorder(mediaStream);
+            mediaRecorder.start(3000); // Capture data every 3 seconds
+
+            startTime = Date.now();
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+                    const timestamp = formatTime(elapsedTime);
+                    transcriptionArea.value += `[${timestamp}] - Transcribed audio chunk would appear here...\n`;
+                    transcriptionArea.scrollTop = transcriptionArea.scrollHeight; // Auto-scroll
+                }
+            };
+
+        } catch (err) {
+            updateStatus('Permission denied.');
+            console.error("Error accessing media devices: ", err);
+        }
+    });
+
+    stopButton.addEventListener('click', () => {
+        if (mediaRecorder) {
+            mediaRecorder.stop();
+        }
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+        }
+        updateStatus('Transcription stopped.');
+    });
+</script>
+</body>
+</html>
