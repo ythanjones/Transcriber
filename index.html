@@ -40,7 +40,6 @@
             Status: <span id="statusText" class="font-semibold">Not recording</span>
         </div>
     </div>
-
 <script>
     const startButton = document.getElementById('startButton');
     const stopButton = document.getElementById('stopButton');
@@ -49,7 +48,6 @@
 
     let mediaRecorder;
     let mediaStream;
-    let recordingInterval;
     let startTime;
 
     function updateStatus(status) {
@@ -78,17 +76,45 @@
             updateStatus('Listening...');
             transcriptionArea.value = ''; // Clear previous transcription
 
-            mediaRecorder = new MediaRecorder(mediaStream);
+            // Configure MediaRecorder
+            // IMPORTANT: Adjust mimeType to match your backend's expected audio format
+            mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm; codecs=opus' }); // Example mimeType
+
             mediaRecorder.start(3000); // Capture data every 3 seconds
 
             startTime = Date.now();
 
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
-                    const timestamp = formatTime(elapsedTime);
-                    transcriptionArea.value += `[${timestamp}] - Transcribed audio chunk would appear here...\n`;
-                    transcriptionArea.scrollTop = transcriptionArea.scrollHeight; // Auto-scroll
+            mediaRecorder.ondataavailable = async (event) => {
+                if (event.data && event.data.size > 0) {
+                    const audioBlob = event.data;
+                    const currentTime = Math.floor((Date.now() - startTime) / 1000);
+                    const formattedTime = formatTime(currentTime);
+
+                    try {
+                        const response = await fetch('/transcribe', {
+                            method: 'POST',
+                            body: audioBlob,
+                            headers: {
+                                'Content-Type': 'audio/webm' // Example Content-Type
+                            }
+                        });
+
+                        if (!response.ok) {
+                            console.error('Error sending audio to backend:', response.statusText);
+                            transcriptionArea.value += `[${formattedTime}] - Error transcribing audio chunk.\n`;
+                            return;
+                        }
+
+                        const result = await response.json();
+                        const transcription = result.transcription;
+
+                        transcriptionArea.value += `[${formattedTime}] - ${transcription}\n`;
+                        transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
+
+                    } catch (error) {
+                        console.error('Error during transcription fetch:', error);
+                        transcriptionArea.value += `[${formattedTime}] - Error sending audio for transcription.\n`;
+                    }
                 }
             };
 
@@ -108,5 +134,6 @@
         updateStatus('Transcription stopped.');
     });
 </script>
+
 </body>
 </html>
