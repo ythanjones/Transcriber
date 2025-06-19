@@ -1,0 +1,15 @@
+
+{
+  "name": "transcription-backend",
+  "version": "1.0.0",
+  "description": "Backend for the real-time audio transcriber.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google-cloud/speech": "^6.3.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
