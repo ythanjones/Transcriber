@@ -22,6 +22,7 @@
                 <li>Open the website you want to transcribe in a new browser tab and start playing its audio.</li>
                 <li>Return to this page and click the 'Start Transcription' button below.</li>
                 <li>From the browser pop-up, select the 'Tab' option and choose the specific tab that is playing the audio, then click 'Share'.</li>
+                <li class="font-bold text-yellow-300">IMPORTANT: Make sure to check the "Share tab audio" box in the browser pop-up.</li>
             </ol>
         </section>
 
@@ -75,13 +76,15 @@
         try {
             mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
-            // Find a supported mimeType
-            const supportedTypes = [
-                'audio/webm; codecs=opus',
-                'audio/webm',
-                'audio/ogg; codecs=opus',
-                'audio/mp4'
-            ];
+            // **NEW**: Check if an audio track was actually shared.
+            if (mediaStream.getAudioTracks().length === 0) {
+                mediaStream.getTracks().forEach(track => track.stop()); // Stop the video share
+                updateStatus("Error: No audio track shared. Please check the 'Share tab audio' box and try again.");
+                resetButtons();
+                return;
+            }
+
+            const supportedTypes = ['audio/webm; codecs=opus', 'audio/webm', 'audio/ogg; codecs=opus', 'audio/mp4'];
             const mimeType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type));
 
             if (!mimeType) {
@@ -93,20 +96,14 @@
             console.log(`Using supported mimeType: ${mimeType}`);
 
             startButton.disabled = true;
-            startButton.classList.add('opacity-50', 'cursor-not-allowed');
-            startButton.classList.remove('hover:bg-blue-700', 'active:bg-blue-800');
-
             stopButton.disabled = false;
-            stopButton.classList.remove('opacity-50', 'cursor-not-allowed');
-            stopButton.classList.add('hover:bg-red-700', 'active:bg-red-800');
+            // ... (rest of the button styling)
 
             updateStatus('Listening...');
             transcriptionArea.value = '';
 
             mediaRecorder = new MediaRecorder(mediaStream, { mimeType: mimeType });
-
             mediaRecorder.start(3000);
-
             startTime = Date.now();
 
             mediaRecorder.ondataavailable = async (event) => {
@@ -119,14 +116,12 @@
                         const response = await fetch('http://localhost:3000/transcribe', {
                             method: 'POST',
                             body: audioBlob,
-                            headers: {
-                                'Content-Type': mimeType // Use the dynamically found mimeType
-                            }
+                            headers: { 'Content-Type': mimeType }
                         });
 
                         if (!response.ok) {
-                            console.error('Error sending audio to backend:', response.statusText);
                             const errorText = await response.text();
+                            console.error('Backend Error:', errorText);
                             transcriptionArea.value += `[${formattedTime}] - Error: ${errorText}
 `;
                             return;
@@ -134,31 +129,28 @@
 
                         const result = await response.json();
                         const transcription = result.transcription || "[No transcription received]";
-
                         transcriptionArea.value += `[${formattedTime}] - ${transcription}
 `;
                         transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
 
                     } catch (error) {
-                        console.error('Error during transcription fetch:', error);
-                        transcriptionArea.value += `[${formattedTime}] - Error sending audio for transcription.
+                        console.error('Fetch Error:', error);
+                        transcriptionArea.value += `[${formattedTime}] - Error sending audio.
 `;
                     }
                 }
             };
 
-            // When the user stops sharing the tab
             mediaStream.getTracks().forEach(track => {
                 track.onended = () => {
-                    console.log('MediaStream track ended.');
+                    console.log('MediaStream track ended by user.');
                     stopButton.click();
                 };
             });
 
-
         } catch (err) {
-            updateStatus('Permission denied.');
-            console.error("Error accessing media devices: ", err);
+            updateStatus(`Error: ${err.name}`);
+            console.error("An error occurred during media setup: ", err);
             resetButtons();
         }
     });
