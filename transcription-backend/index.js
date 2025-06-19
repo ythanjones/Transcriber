@@ -65,8 +65,7 @@ app.post('/transcribe', async (req, res) => {
 
     const transcription = response.results
       .map(result => result.alternatives[0].transcript)
-      .join('
-'); // 5. Corrected the syntax error here.
+      .join(''); // 5. Corrected the syntax error here.
 
     console.log("Successfully transcribed audio.");
     res.send({ transcription });
