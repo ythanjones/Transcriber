@@ -21,7 +21,7 @@
             <ol class="list-decimal list-inside space-y-2 text-gray-300">
                 <li>Open the website you want to transcribe in a new browser tab and start playing its audio.</li>
                 <li>Return to this page and click the 'Start Transcription' button below.</li>
-                <li>From the browser pop-up, select the 'Tab' option and choose the specific tab that is playing the audio, then click 'Share'.</li>
+                <li>From the browser pop-up, select the 'Tab' option and choose the specific tab that is playing the audio.</li>
                 <li class="font-bold text-yellow-300">IMPORTANT: Make sure to check the "Share tab audio" box in the browser pop-up.</li>
             </ol>
         </section>
@@ -48,37 +48,32 @@
     const transcriptionArea = document.getElementById('transcriptionArea');
 
     let mediaRecorder;
-    let mediaStream;
+    let originalStream;
     let startTime;
 
     function updateStatus(status) {
         statusText.textContent = status;
     }
-
-    function formatTime(seconds) {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    }
     
     function resetButtons() {
         startButton.disabled = false;
-        startButton.classList.remove('opacity-50', 'cursor-not-allowed');
-        startButton.classList.add('hover:bg-blue-700', 'active:bg-blue-800');
-
         stopButton.disabled = true;
-        stopButton.classList.add('opacity-50', 'cursor-not-allowed');
-        stopButton.classList.remove('hover:bg-red-700', 'active:bg-red-800');
     }
 
     startButton.addEventListener('click', async () => {
         try {
-            mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            originalStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: {
+                    // These constraints can improve the likelihood of getting a clean audio stream
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                }
+            });
 
-            // **NEW**: Check if an audio track was actually shared.
-            if (mediaStream.getAudioTracks().length === 0) {
-                mediaStream.getTracks().forEach(track => track.stop()); // Stop the video share
+            if (originalStream.getAudioTracks().length === 0) {
+                originalStream.getTracks().forEach(track => track.stop());
                 updateStatus("Error: No audio track shared. Please check the 'Share tab audio' box and try again.");
                 resetButtons();
                 return;
@@ -88,6 +83,7 @@
             const mimeType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type));
 
             if (!mimeType) {
+                originalStream.getTracks().forEach(track => track.stop());
                 updateStatus('Error: No supported audio format found.');
                 resetButtons();
                 return;
@@ -97,51 +93,53 @@
 
             startButton.disabled = true;
             stopButton.disabled = false;
-            // ... (rest of the button styling)
 
             updateStatus('Listening...');
             transcriptionArea.value = '';
 
-            mediaRecorder = new MediaRecorder(mediaStream, { mimeType: mimeType });
-            mediaRecorder.start(3000);
+            // **NEW**: Create a new stream containing only the audio track.
+            const audioStream = new MediaStream(originalStream.getAudioTracks());
+
+            // Pass the clean, audio-only stream to the MediaRecorder.
+            mediaRecorder = new MediaRecorder(audioStream, { mimeType: mimeType });
+
             startTime = Date.now();
 
             mediaRecorder.ondataavailable = async (event) => {
                 if (event.data && event.data.size > 0) {
-                    const audioBlob = event.data;
-                    const currentTime = Math.floor((Date.now() - startTime) / 1000);
-                    const formattedTime = formatTime(currentTime);
-
                     try {
                         const response = await fetch('http://localhost:3000/transcribe', {
                             method: 'POST',
-                            body: audioBlob,
+                            body: event.data,
                             headers: { 'Content-Type': mimeType }
                         });
 
                         if (!response.ok) {
                             const errorText = await response.text();
                             console.error('Backend Error:', errorText);
-                            transcriptionArea.value += `[${formattedTime}] - Error: ${errorText}
+                            transcriptionArea.value += `[Error]: ${errorText}
 `;
                             return;
                         }
 
                         const result = await response.json();
-                        const transcription = result.transcription || "[No transcription received]";
-                        transcriptionArea.value += `[${formattedTime}] - ${transcription}
-`;
-                        transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
-
+                        const transcription = result.transcription || "";
+                        if(transcription) {
+                           transcriptionArea.value += `${transcription} `;
+                           transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
+                        }
                     } catch (error) {
                         console.error('Fetch Error:', error);
-                        transcriptionArea.value += `[${formattedTime}] - Error sending audio.
+                        transcriptionArea.value += `[Error sending audio.]
 `;
                     }
                 }
             };
 
-            mediaStream.getTracks().forEach(track => {
+            // Start recording
+            mediaRecorder.start(3000); // Collect data in 3-second chunks
+
+            originalStream.getTracks().forEach(track => {
                 track.onended = () => {
                     console.log('MediaStream track ended by user.');
                     stopButton.click();
@@ -159,8 +157,8 @@
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
         }
-        if (mediaStream) {
-            mediaStream.getTracks().forEach(track => track.stop());
+        if (originalStream) {
+            originalStream.getTracks().forEach(track => track.stop());
         }
         updateStatus('Transcription stopped.');
         resetButtons();
