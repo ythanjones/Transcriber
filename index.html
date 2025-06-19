@@ -75,6 +75,23 @@
         try {
             mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
+            // Find a supported mimeType
+            const supportedTypes = [
+                'audio/webm; codecs=opus',
+                'audio/webm',
+                'audio/ogg; codecs=opus',
+                'audio/mp4'
+            ];
+            const mimeType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type));
+
+            if (!mimeType) {
+                updateStatus('Error: No supported audio format found.');
+                resetButtons();
+                return;
+            }
+
+            console.log(`Using supported mimeType: ${mimeType}`);
+
             startButton.disabled = true;
             startButton.classList.add('opacity-50', 'cursor-not-allowed');
             startButton.classList.remove('hover:bg-blue-700', 'active:bg-blue-800');
@@ -84,13 +101,11 @@
             stopButton.classList.add('hover:bg-red-700', 'active:bg-red-800');
 
             updateStatus('Listening...');
-            transcriptionArea.value = ''; // Clear previous transcription
+            transcriptionArea.value = '';
 
-            // Configure MediaRecorder
-            // IMPORTANT: Adjust mimeType to match your backend's expected audio format
-            mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm; codecs=opus' }); // Example mimeType
+            mediaRecorder = new MediaRecorder(mediaStream, { mimeType: mimeType });
 
-            mediaRecorder.start(3000); // Capture data every 3 seconds
+            mediaRecorder.start(3000);
 
             startTime = Date.now();
 
@@ -105,19 +120,20 @@
                             method: 'POST',
                             body: audioBlob,
                             headers: {
-                                'Content-Type': 'audio/webm' // Example Content-Type
+                                'Content-Type': mimeType // Use the dynamically found mimeType
                             }
                         });
 
                         if (!response.ok) {
                             console.error('Error sending audio to backend:', response.statusText);
-                            transcriptionArea.value += `[${formattedTime}] - Error transcribing audio chunk.
+                            const errorText = await response.text();
+                            transcriptionArea.value += `[${formattedTime}] - Error: ${errorText}
 `;
                             return;
                         }
 
                         const result = await response.json();
-                        const transcription = result.transcription;
+                        const transcription = result.transcription || "[No transcription received]";
 
                         transcriptionArea.value += `[${formattedTime}] - ${transcription}
 `;
@@ -131,6 +147,15 @@
                 }
             };
 
+            // When the user stops sharing the tab
+            mediaStream.getTracks().forEach(track => {
+                track.onended = () => {
+                    console.log('MediaStream track ended.');
+                    stopButton.click();
+                };
+            });
+
+
         } catch (err) {
             updateStatus('Permission denied.');
             console.error("Error accessing media devices: ", err);
@@ -139,7 +164,7 @@
     });
 
     stopButton.addEventListener('click', () => {
-        if (mediaRecorder) {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
         }
         if (mediaStream) {

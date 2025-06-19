@@ -3,41 +3,48 @@ const express = require('express');
 const { SpeechClient } = require('@google-cloud/speech');
 const app = express();
 const port = 3000;
+const cors = require('cors');
 
-// Middleware to parse raw bodies for audio data.
-// The 'type' should match the 'Content-Type' header from the front-end.
+// Enable CORS for all routes
+app.use(cors());
+
+// The 'type' is now more flexible, accepting any audio type.
 app.use(express.raw({
-  type: 'audio/webm',
+  type: 'audio/*',
   limit: '10mb'
 }));
 
-// This enables your frontend (which will be on a different origin)
-// to make requests to your backend.
-const cors = require('cors');
-app.use(cors());
-
-
-// Instantiate Google Cloud Speech-to-Text client.
-// This automatically uses the GOOGLE_APPLICATION_CREDENTIALS environment variable.
 const client = new SpeechClient();
 
 app.post('/transcribe', async (req, res) => {
   try {
     const audioBytes = req.body;
+    const contentType = req.headers['content-type'];
+    let encoding;
 
-    if (!Buffer.isBuffer(audioBytes)) {
-      return res.status(400).send('Invalid audio data.');
+    // Determine encoding from Content-Type
+    if (contentType.includes('webm')) {
+        encoding = 'WEBM_OPUS';
+    } else if (contentType.includes('ogg')) {
+        encoding = 'OGG_OPUS';
+    } else if (contentType.includes('mp4')) {
+        encoding = 'MP4_AUDIO';
+    } else {
+        console.error(`Unsupported content type: ${contentType}`);
+        return res.status(400).send(`Unsupported content type: ${contentType}`);
     }
+    
+    console.log(`Received audio with Content-Type: ${contentType}, using encoding: ${encoding}`);
 
     const request = {
       audio: {
         content: audioBytes.toString('base64'),
       },
       config: {
-        // IMPORTANT: These settings must match the audio from the MediaRecorder in the frontend.
-        encoding: 'WEBM_OPUS', // This encoding works for 'audio/webm; codecs=opus'
-        sampleRateHertz: 48000,  // This is a common sample rate for web audio.
+        encoding: encoding,
+        sampleRateHertz: 48000,
         languageCode: 'en-US',
+        enableAutomaticPunctuation: true,
       },
     };
 
@@ -45,9 +52,8 @@ app.post('/transcribe', async (req, res) => {
     const transcription = response.results
       .map(result => result.alternatives[0].transcript)
       .join('
-');
+'); // Corrected this line to remove the invalid newline
 
-    // Send the transcription back to the frontend.
     res.send({ transcription });
 
   } catch (error) {
