@@ -60,6 +60,16 @@
         const s = Math.floor(seconds % 60);
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     }
+    
+    function resetButtons() {
+        startButton.disabled = false;
+        startButton.classList.remove('opacity-50', 'cursor-not-allowed');
+        startButton.classList.add('hover:bg-blue-700', 'active:bg-blue-800');
+
+        stopButton.disabled = true;
+        stopButton.classList.add('opacity-50', 'cursor-not-allowed');
+        stopButton.classList.remove('hover:bg-red-700', 'active:bg-red-800');
+    }
 
     startButton.addEventListener('click', async () => {
         try {
@@ -91,7 +101,7 @@
                     const formattedTime = formatTime(currentTime);
 
                     try {
-                        const response = await fetch('/transcribe', {
+                        const response = await fetch('http://localhost:3000/transcribe', {
                             method: 'POST',
                             body: audioBlob,
                             headers: {
@@ -101,19 +111,22 @@
 
                         if (!response.ok) {
                             console.error('Error sending audio to backend:', response.statusText);
-                            transcriptionArea.value += `[${formattedTime}] - Error transcribing audio chunk.\n`;
+                            transcriptionArea.value += `[${formattedTime}] - Error transcribing audio chunk.
+`;
                             return;
                         }
 
                         const result = await response.json();
                         const transcription = result.transcription;
 
-                        transcriptionArea.value += `[${formattedTime}] - ${transcription}\n`;
+                        transcriptionArea.value += `[${formattedTime}] - ${transcription}
+`;
                         transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
 
                     } catch (error) {
                         console.error('Error during transcription fetch:', error);
-                        transcriptionArea.value += `[${formattedTime}] - Error sending audio for transcription.\n`;
+                        transcriptionArea.value += `[${formattedTime}] - Error sending audio for transcription.
+`;
                     }
                 }
             };
@@ -121,6 +134,7 @@
         } catch (err) {
             updateStatus('Permission denied.');
             console.error("Error accessing media devices: ", err);
+            resetButtons();
         }
     });
 
@@ -132,6 +146,7 @@
             mediaStream.getTracks().forEach(track => track.stop());
         }
         updateStatus('Transcription stopped.');
+        resetButtons();
     });
 </script>
 
